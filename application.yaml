@@ -8,11 +8,15 @@ spec:
   source:
     repoURL: https://github.com/cohavisi/math-deployment.git
     targetRevision: HEAD
-    path: guestbook
+    path: dev
   destination:
     server: https://kubernetes.default.svc
-    namespace: guestbook
+    namespace: myapp
   
   syncPolicy:
     syncOptions:
     - createNamespace=true
+
+    automated:
+      selfHeal: true
+      prune: true
