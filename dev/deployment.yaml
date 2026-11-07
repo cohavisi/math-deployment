@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: math
-          image: cohavisi/mymath:f2a4d2eee012888f19872bd431297d10cba0522e
+          image: cohavisi/mymath:58eb94915b396e32fffccf19e1867fee1af79808
           imagePullPolicy: Always
           ports:
             - name: http
