@@ -2,7 +2,7 @@ replicaCount: 3
 
 image:
   repository: cohavisi/mymath
-  tag: "58eb94915b396e32fffccf19e1867fee1af79808"
+  tag: "016d3b649de70f6dd739292e891ee003ee4da95d"
   pullPolicy: Always
 
 imagePullSecrets: []
@@ -12,3 +12,20 @@ service:
   nodePort: null
 
 resources: {}
+
+metrics:
+  # Enable after publishing the instrumented image and bootstrapping monitoring.
+  enabled: false
+  port: 9090
+  serviceMonitor:
+    enabled: true
+    releaseLabel: monitoring
+    interval: 30s
+    scrapeTimeout: 10s
+  dashboard:
+    enabled: true
+  alerts:
+    enabled: true
+    latencySeconds: 1
+    minimumRequestsPerSecond: 0.1
+    errorsPerFiveMinutes: 5

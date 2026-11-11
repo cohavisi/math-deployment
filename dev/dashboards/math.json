@@ -1,0 +1,150 @@
+{
+  "uid": "math-overview",
+  "title": "Math overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": ["math", "kubernetes"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "query": {"query": "label_values(math_http_requests_in_flight, namespace)", "refId": "namespace"},
+        "refresh": 1,
+        "current": {"text": "myapp", "value": "myapp"}
+      },
+      {
+        "name": "pod",
+        "label": "Pod",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "query": {"query": "label_values(math_http_requests_in_flight{namespace=\"$namespace\"}, pod)", "refId": "pod"},
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Completed requests per second",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (route) (rate(math_http_requests_total{namespace=\"$namespace\",pod=~\"$pod\"}[$__rate_interval]))", "legendFormat": "{{route}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 2,
+      "title": "Request p95 latency across selected Pods",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(math_http_request_duration_seconds_bucket{namespace=\"$namespace\",pod=~\"$pod\"}[$__rate_interval])))", "legendFormat": "{{route}}"}],
+      "fieldConfig": {"defaults": {"unit": "s", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 3,
+      "title": "Calculation p95 latency (without formatting/logging)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (operation, algorithm, le) (rate(math_calculation_duration_seconds_bucket{namespace=\"$namespace\",pod=~\"$pod\"}[$__rate_interval])))", "legendFormat": "{{operation}} / {{algorithm}}"}],
+      "fieldConfig": {"defaults": {"unit": "s", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 4,
+      "title": "In-flight requests per Pod",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (pod) (math_http_requests_in_flight{namespace=\"$namespace\",pod=~\"$pod\"})", "legendFormat": "{{pod}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 5,
+      "title": "Validation errors per minute",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "60 * sum by (operation, category) (rate(math_calculation_errors_total{namespace=\"$namespace\",pod=~\"$pod\"}[$__rate_interval]))", "legendFormat": "{{operation}} / {{category}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 6,
+      "title": "HTTP 5xx and request panics per minute (separate signals)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "60 * sum by (route) (rate(math_http_requests_total{namespace=\"$namespace\",pod=~\"$pod\",code=~\"5..\"}[$__rate_interval]))", "legendFormat": "{{route}} 5xx"},
+        {"refId": "B", "expr": "60 * sum by (route) (rate(math_http_panics_total{namespace=\"$namespace\",pod=~\"$pod\"}[$__rate_interval]))", "legendFormat": "{{route}} panics"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 7,
+      "title": "Pod CPU usage (cores)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{job=\"kubelet\",metrics_path=\"/metrics/cadvisor\",namespace=\"$namespace\",pod=~\"$pod\",container=\"math\"}[$__rate_interval]))", "legendFormat": "{{pod}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 8,
+      "title": "Pod memory working set",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (pod) (container_memory_working_set_bytes{job=\"kubelet\",metrics_path=\"/metrics/cadvisor\",namespace=\"$namespace\",pod=~\"$pod\",container=\"math\"})", "legendFormat": "{{pod}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 9,
+      "title": "Pod CPU throttled periods",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{job=\"kubelet\",metrics_path=\"/metrics/cadvisor\",namespace=\"$namespace\",pod=~\"$pod\",container=\"math\"}[$__rate_interval])) / clamp_min(sum by (pod) (rate(container_cpu_cfs_periods_total{job=\"kubelet\",metrics_path=\"/metrics/cadvisor\",namespace=\"$namespace\",pod=~\"$pod\",container=\"math\"}[$__rate_interval])), 0.000000001)", "legendFormat": "{{pod}}"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []}
+    },
+    {
+      "id": 10,
+      "title": "Go goroutines per Pod",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 32, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "go_goroutines{namespace=\"$namespace\",pod=~\"$pod\"}", "legendFormat": "{{pod}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 11,
+      "title": "Go heap allocation per Pod",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 40, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "go_memstats_heap_alloc_bytes{namespace=\"$namespace\",pod=~\"$pod\"}", "legendFormat": "{{pod}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "min": 0}, "overrides": []}
+    },
+    {
+      "id": 12,
+      "title": "Container restarts in the last hour",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 40, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\",pod=~\"$pod\",container=\"math\"}[1h]))", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value"}
+    }
+  ]
+}

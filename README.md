@@ -94,3 +94,133 @@ synchronized; an older image without the endpoints will fail its startup probe.
    Service rendered from the `dev` Helm chart.
 
 The Service needs no probe settings: it uses Pod readiness automatically.
+
+## Prometheus and Grafana
+
+`monitoring/application.yaml` is a separate Argo CD Application deploying
+`kube-prometheus-stack` **93.2.0** with Git-hosted `monitoring/values.yaml`.
+It requires Kubernetes 1.25+ and Argo CD 2.6+ for multi-source Helm values.
+The Argo CD project must permit the upstream Helm repository, this Git
+repository, the `monitoring` namespace, and the stack's cluster-scoped resources.
+The stack includes Prometheus Operator/CRDs, Prometheus, Alertmanager, Grafana,
+Node Exporter, kube-state-metrics, Kubernetes dashboards and alert rules.
+
+These are development defaults, not measured production sizing: one Prometheus
+replica, two days of retention capped at 4 GiB, a 5 GiB Prometheus PVC, and 1 GiB
+PVCs for Grafana and Alertmanager. A default dynamic StorageClass is required;
+set explicit storage classes for your cluster when necessary. Configure
+resources, storage, retention and availability before production use. Avoid
+running a second stack if this cluster already has an operator/monitoring
+installation managing these resources.
+
+Controller-manager, scheduler, etcd and kube-proxy scrapes/rules are disabled
+because these endpoints are commonly inaccessible on local or managed clusters.
+API server, kubelet/cAdvisor, nodes and workload-state monitoring remain enabled.
+Re-enable the disabled components only after configuring reachable,
+authenticated endpoints for your cluster.
+
+### Bootstrap and enable application scraping
+
+All following commands are operator steps; confirm your Kubernetes context.
+No manifests are applied merely by adding files to this repository.
+
+1. Commit/push the monitoring files. The existing math Application watches only
+   `dev`; register the monitoring Application separately, or have a parent
+   Argo CD Application manage its definition.
+2. Before synchronization, create the `monitoring` namespace and an externally
+   managed `grafana-admin` Secret there with keys `admin-user` and
+   `admin-password`. Grafana references this Secret; credentials are not stored
+   in Git. Provision it through your secret manager, or from protected local
+   files, for example:
+
+```sh
+kubectl create namespace monitoring
+kubectl -n monitoring create secret generic grafana-admin \
+  --from-file=admin-user=/secure/path/admin-user \
+  --from-file=admin-password=/secure/path/admin-password
+kubectl apply -f monitoring/application.yaml
+```
+
+Use existing namespace/Secret management instead of the create commands if they
+already exist. Allow Argo CD to synchronize the stack, then confirm the
+monitoring Application is healthy and these CRDs exist:
+
+```sh
+kubectl get crd servicemonitors.monitoring.coreos.com prometheusrules.monitoring.coreos.com
+kubectl -n monitoring get pods,pvc
+```
+
+3. Publish the instrumented application image from the `math` repository,
+   update `dev/values.yaml`'s `image.tag` to that published SHA, and set
+   `metrics.enabled: true` in the same GitOps commit. The checked-in old image
+   is deliberately preserved; metrics are disabled until this step.
+4. Commit/push and let the existing math Application synchronize. Confirm three
+   math Pod targets are individually `UP` in Prometheus and send math requests
+   to populate latency histograms.
+
+Do not assume sync waves order independently registered Applications. Bootstrap
+the stack/CRDs before enabling the math ServiceMonitor/PrometheusRule.
+
+### Metrics wiring and dashboards
+
+The API NodePort remains on port 8080. When `metrics.enabled` is true, the chart
+adds port 9090 (configurable), the `math-metrics` **ClusterIP** Service, a
+ServiceMonitor, a Grafana dashboard ConfigMap, and application alert rules.
+The ServiceMonitor selects only the metrics Service, not the API Service.
+It scrapes each Pod's `/metrics` every 30 seconds with a 10-second timeout.
+
+Prometheus discovers monitors/rules labeled `release: monitoring` in the
+`monitoring` and `myapp` namespaces. Change both discovery selectors if you
+change the application namespace or monitoring release label. Prometheus adds
+`namespace`, `pod`, `service`, and target labels to application samples; the
+application does not construct Kubernetes identity labels itself.
+
+Grafana's dashboard sidecar loads ConfigMaps labeled `grafana_dashboard: "1"`.
+The provisioned **Math overview** dashboard uses datasource UID `prometheus` and
+namespace/Pod filters. It shows throughput, p95 request/calculation latency,
+in-flight requests, validation errors, panics/5xx, CPU, memory, throttling,
+goroutines, heap, and restarts. Built-in dashboards cover cluster/node and
+Deployment availability. Histograms are aggregated across Pods before
+calculating percentiles.
+
+```sh
+kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
+kubectl -n monitoring port-forward svc/monitoring-prometheus 9090:9090
+```
+
+Run each port-forward in its own terminal. Access Grafana at
+`http://localhost:3000` using the externally provisioned admin credentials and
+Prometheus at `http://localhost:9090`. Grafana, Prometheus and Alertmanager remain
+ClusterIP-only; configure authenticated TLS ingress if remote access is needed.
+The metrics Service is internal, but namespace access is not a firewall:
+use NetworkPolicies where your network plugin supports them.
+
+### Alerts and upgrades
+
+Application rules cover unreachable/missing scrape targets, request panics,
+repeated validation failures, sustained p95 latency, HTTP 5xx and OOM restarts.
+Latency/rate/error thresholds in `dev/values.yaml` are starting points; tune them
+to measured load and an agreed SLO. Default stack rules cover replica
+availability, crash loops, node pressure and monitoring health.
+
+Alertmanager is deployed, but external notifications are **not configured**:
+the upstream default receiver discards notifications. Configure a real receiver
+and route in `monitoring/values.yaml`, referencing externally managed Secrets
+for notification credentials, before relying on paging.
+
+Upgrade the pinned stack version deliberately and follow its CRD migration
+instructions. Argo CD uses server-side apply to avoid large CRD annotation
+limits; this does not replace CRD compatibility checks. Do not blindly prune
+monitoring CRDs, which may be shared with other applications.
+
+### Local chart validation
+
+```sh
+helm lint ./dev --strict
+helm lint ./dev --strict --set metrics.enabled=true
+helm template math ./dev --namespace myapp --set metrics.enabled=true
+helm template monitoring kube-prometheus-stack \
+  --repo https://prometheus-community.github.io/helm-charts \
+  --version 93.2.0 --namespace monitoring \
+  --include-crds --values monitoring/values.yaml
+```

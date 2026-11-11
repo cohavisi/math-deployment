@@ -1,0 +1,13 @@
+{{- if and .Values.metrics.enabled .Values.metrics.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "math.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  math.json: |
+    {{- .Files.Get "dashboards/math.json" | nindent 4 }}
+{{- end }}

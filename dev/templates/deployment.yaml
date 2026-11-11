@@ -23,10 +23,20 @@ spec:
         - name: math
           image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.metrics.enabled }}
+          env:
+            - name: METRICS_PORT
+              value: {{ .Values.metrics.port | quote }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
           startupProbe:
             httpGet:
               path: /health/startup

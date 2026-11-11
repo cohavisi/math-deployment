@@ -1,0 +1,79 @@
+{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled .Values.metrics.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "math.labels" . | nindent 4 }}
+    release: {{ .Values.metrics.serviceMonitor.releaseLabel | quote }}
+spec:
+  groups:
+    - name: math.application
+      rules:
+        - alert: MathMetricsTargetDown
+          expr: up{namespace="{{ .Release.Namespace }}",service="{{ .Release.Name }}-metrics"} == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Math Pod metrics endpoint is unreachable
+            description: Check Pod readiness, port {{ .Values.metrics.port }}, Service endpoints and network policies.
+        - alert: MathMetricsMissing
+          expr: absent(up{namespace="{{ .Release.Namespace }}",service="{{ .Release.Name }}-metrics"})
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Prometheus has discovered no math metrics targets
+            description: Check ServiceMonitor release labels, namespace discovery and the metrics Service.
+        - alert: MathRequestPanics
+          expr: sum by (namespace, route) (increase(math_http_panics_total{namespace="{{ .Release.Namespace }}"}[5m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: Math requests are terminating with panics
+            description: Inspect application logs; malformed JSON currently panics instead of returning an HTTP error.
+        - alert: MathCalculationErrors
+          expr: sum by (namespace, operation, category) (increase(math_calculation_errors_total{namespace="{{ .Release.Namespace }}"}[5m])) >= {{ .Values.metrics.alerts.errorsPerFiveMinutes }}
+          labels:
+            severity: warning
+          annotations:
+            summary: Repeated math request validation failures
+            description: Check invalid JSON and unsupported algorithms; some failures retain HTTP 200 behavior.
+        - alert: MathHighRequestLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (namespace, route, le) (
+                rate(math_http_request_duration_seconds_bucket{namespace="{{ .Release.Namespace }}"}[5m])
+              )
+            ) > {{ .Values.metrics.alerts.latencySeconds }}
+            and on (namespace, route)
+            sum by (namespace, route) (
+              rate(math_http_requests_total{namespace="{{ .Release.Namespace }}"}[5m])
+            ) > {{ .Values.metrics.alerts.minimumRequestsPerSecond }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Math p95 request latency is elevated under sustained traffic
+            description: Compare calculation duration, Pod CPU/throttling, memory and output/logging overhead.
+        - alert: MathHTTPServerErrors
+          expr: sum by (namespace, route) (rate(math_http_requests_total{namespace="{{ .Release.Namespace }}",code=~"5.."}[5m])) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Math is returning HTTP server errors
+            description: HTTP status errors exclude panics and validation failures; inspect their separate metrics.
+        - alert: MathOOMKilled
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}",container="math"}[10m]) > 0
+            and on (namespace, pod, container)
+            kube_pod_container_status_last_terminated_reason{namespace="{{ .Release.Namespace }}",container="math",reason="OOMKilled"} == 1
+          labels:
+            severity: warning
+          annotations:
+            summary: A math container restarted after an OOM kill
+            description: Inspect memory usage, request sizes and container memory limits.
+{{- end }}
