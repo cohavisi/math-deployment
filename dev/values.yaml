@@ -15,7 +15,7 @@ resources: {}
 
 metrics:
   # Enable after publishing the instrumented image and bootstrapping monitoring.
-  enabled: false
+  enabled: true
   port: 9090
   serviceMonitor:
     enabled: true
