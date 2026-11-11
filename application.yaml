@@ -9,13 +9,15 @@ spec:
     repoURL: https://github.com/cohavisi/math-deployment.git
     targetRevision: HEAD
     path: dev
+    helm:
+      releaseName: math
   destination:
     server: https://kubernetes.default.svc
     namespace: myapp
-  
+
   syncPolicy:
     syncOptions:
-    - createNamespace=true
+    - CreateNamespace=true
 
     automated:
       selfHeal: true

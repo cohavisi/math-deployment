@@ -1,0 +1,5 @@
+apiVersion: v2
+name: math
+description: Argo CD managed Helm chart for the Go math calculator
+type: application
+version: 0.1.0

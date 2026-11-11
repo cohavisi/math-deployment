@@ -1,22 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: math
-  namespace: myapp
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "math.labels" . | nindent 4 }}
 spec:
-  replicas: 5
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: math
+      {{- include "math.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: math
+        {{- include "math.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: math
-          image: cohavisi/mymath:58eb94915b396e32fffccf19e1867fee1af79808
-          imagePullPolicy: Always
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080
@@ -42,3 +48,5 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

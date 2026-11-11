@@ -1,0 +1,14 @@
+replicaCount: 3
+
+image:
+  repository: cohavisi/mymath
+  tag: "58eb94915b396e32fffccf19e1867fee1af79808"
+  pullPolicy: Always
+
+imagePullSecrets: []
+
+service:
+  port: 8080
+  nodePort: null
+
+resources: {}
